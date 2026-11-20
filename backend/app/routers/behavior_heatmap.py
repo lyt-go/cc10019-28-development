@@ -4,12 +4,24 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app.schemas import ActionPayload, ActionResult
-from app.services.behavior_heatmap import generate_heatmap, get_heatmap
+from app.services.behavior_heatmap import (
+    generate_authorized_heatmap,
+    generate_heatmap,
+    get_heatmap,
+)
+from app.services.heatmap_share import ShareAccessError
 from app.store import store
 
 router = APIRouter(prefix="/api/behavior-heatmap", tags=["behavior_heatmap"])
+
+
+class AuthorizedGeneratePayload(BaseModel):
+    reader_id: str = Field(..., description="读者账号，按其当前许可授权")
+    grain: str = Field(..., description="统计粒度：store/region")
+    scope_id: str = Field(..., description="门店或区域编号")
 
 
 @router.get("")
@@ -41,6 +53,24 @@ def generate(config_id: str) -> ActionResult:
         return ActionResult(ok=True, message="Generated", entry=result)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{config_id}/authorized-generate")
+def authorized_generate(config_id: str, payload: AuthorizedGeneratePayload) -> ActionResult:
+    """用授权热力数据计算格值与色阶：按读者当前许可决定可用统计粒度。"""
+    try:
+        result = generate_authorized_heatmap(
+            config_id, payload.reader_id, payload.grain, payload.scope_id,
+        )
+        return ActionResult(ok=True, message="AuthorizedGenerated", entry=result)
+    except ShareAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={
+            "code": exc.code,
+            "message": str(exc),
+            **exc.extra,
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get("/{config_id}/result")

@@ -1,9 +1,11 @@
-"""行为热力服务：消费事件聚合数据，生成热力图分析结果。"""
+"""行为热力服务：消费事件聚合数据与授权热力数据，生成热力图分析结果。"""
 from __future__ import annotations
 
 from typing import Any
 from collections import defaultdict
 
+from app.services import heatmap_share
+from app.services.heatmap_share import ShareAccessError
 from app.store import store
 
 
@@ -97,3 +99,71 @@ def get_heatmap(config_id: str) -> dict[str, Any] | None:
         return generate_heatmap(config_id)
     except ValueError:
         return None
+
+
+def generate_authorized_heatmap(config_id: str, reader_id: str, grain: str,
+                                scope_id: str) -> dict[str, Any]:
+    """基于授权热力数据生成行为热力：格值与色阶只取读者获准的层级。
+
+    与 generate_heatmap 的区别：
+    - 输入是 heatmap_share 从获准空间事件明细聚合出的授权热力数据；
+    - 色阶上下界、总量计数随授权投影变化，不夹带无权层级；
+    - 产物按读者隔离存储，读者之间互不可见。
+    """
+    config = store.find_by_field("behavior_heatmap", "config_id", config_id)
+    if config is None:
+        raise ValueError(f"Heatmap config not found: {config_id}")
+
+    event_id = config["event_id"]
+    color_scale = config.get("color_scale", "viridis")
+
+    # 授权校验在服务层完成，无权时直接抛出，不产出任何格值
+    authorized = heatmap_share.build_authorized_heatmap(
+        reader_id, event_id, grain, scope_id, color_scale,
+    )
+
+    # 授权格值按网格单元重新组织为行为热力的数据结构
+    heat_data: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for cell in authorized["cells"]:
+        heat_data[cell["cell_id"]].append({
+            "dimension": cell["cell_id"],
+            "time_slot": cell["time_slot"],
+            "intensity": cell["intensity"],
+        })
+
+    result = {
+        "config_id": config_id,
+        "event_id": event_id,
+        "reader_id": reader_id,
+        "delivered_grain": authorized["delivered_grain"],
+        "scope_id": authorized["scope_id"],
+        "scope_name": authorized["scope_name"],
+        "spatial_dim": config["spatial_dim"],
+        "agg_grain": config["agg_grain"],
+        "time_range": config["time_range"],
+        "heatmap_data": dict(heat_data),
+        # 色阶来源：授权热力数据（只基于可见格值）
+        "color_scale": color_scale,
+        "max_intensity": authorized["max_intensity"],
+        "min_intensity": authorized["min_intensity"],
+        "total_count": authorized["total_count"],
+        "cell_count": authorized["cell_count"],
+        "grants_used": authorized["grants_used"],
+        "source_authorized_heatmap": True,
+        "source_aggregate": None,
+        "output_image": config.get("output_image", ""),
+    }
+
+    store.set_artifact(
+        "behavior_heatmap_authorized",
+        f"{config_id}:{reader_id}:{grain}:{scope_id}",
+        result,
+    )
+    return result
+
+
+def get_authorized_heatmap(config_id: str, reader_id: str, grain: str,
+                           scope_id: str) -> dict[str, Any]:
+    """读取授权热力产物；每次都按当前授权重新校验，撤回后旧缓存不再可读。"""
+    # 不直接返回缓存：缓存只留作审计，许可校验必须以当前授权为准
+    return generate_authorized_heatmap(config_id, reader_id, grain, scope_id)

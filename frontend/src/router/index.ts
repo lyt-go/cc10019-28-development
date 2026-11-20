@@ -19,6 +19,7 @@ const TagDrill = () => import('@/views/tag_drill/index.vue')
 const EventAggregate = () => import('@/views/event_aggregate/index.vue')
 const TagSnapshot = () => import('@/views/tag_snapshot/index.vue')
 const BehaviorHeatmap = () => import('@/views/behavior_heatmap/index.vue')
+const HeatmapShare = () => import('@/views/heatmap_share/index.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -42,6 +43,7 @@ const router = createRouter({
     { path: '/event_aggregate', name: 'event_aggregate', component: EventAggregate },
     { path: '/tag_snapshot', name: 'tag_snapshot', component: TagSnapshot },
     { path: '/behavior_heatmap', name: 'behavior_heatmap', component: BehaviorHeatmap },
+    { path: '/heatmap_share', name: 'heatmap_share', component: HeatmapShare },
   ],
 })
 

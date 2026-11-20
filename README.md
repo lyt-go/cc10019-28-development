@@ -67,6 +67,7 @@ npm run dev
 | 事件聚合 | `event_aggregate` | 聚合配置 | 配置编号、事件名称、聚合维度 |
 | 标签快照 | `tag_snapshot` | 快照记录 | 快照编号、快照日期、用户基数 |
 | 行为热力 | `behavior_heatmap` | 热力配置 | 配置编号、行为事件、时间范围 |
+| 授权热力共享 | `heatmap_share` | 许可/共享看板 | 许可编号、共享编号、粒度、Token、状态 |
 
 ## 约定
 
